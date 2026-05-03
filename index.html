@@ -2,120 +2,152 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>THE_VAULT | TEL-AD System</title>
+    <title>TEL-AD | PROJECT_GENESIS</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
         :root {
-            --terminal-green: #00ff41;
-            --alert-red: #ff003c;
-            --bg-dark: #0a0a0a;
+            --glow: #00ff41;
+            --dim-glow: #003b00;
+            --error: #ff003c;
+            --font: 'VT323', monospace;
         }
 
         body, html {
-            margin: 0; padding: 0;
-            background-color: var(--bg-dark);
-            color: var(--terminal-green);
-            font-family: 'Courier New', Courier, monospace;
-            overflow: hidden;
-            height: 100%;
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            background: #000; color: var(--glow);
+            font-family: var(--font); overflow: hidden;
         }
 
-        /* אפקט ה-CRT המפורסם */
-        .scanlines {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
-                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            background-size: 100% 4px, 3px 100%;
-            z-index: 1000; pointer-events: none;
-        }
-
-        #game-viewport {
+        /* מנגנון הצגת החדר - מבטיח שכל כפתור יישאר במקום */
+        #viewport {
             position: relative;
-            width: 100vw; height: calc(100vh - 100px);
+            width: 100vw; height: 100vh;
             display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
         }
 
-        #room-image {
-            max-width: 100%; max-height: 100%;
-            box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);
-            user-select: none;
+        #bg-img {
+            width: 100%; height: 100%;
+            object-fit: cover; /* מותח את התמונה על כל המסך */
+            filter: brightness(0.6) contrast(1.2);
+            transition: filter 0.5s;
+        }
+
+        /* שכבת ה-Hotspots */
+        #interaction-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
         }
 
         .hotspot {
             position: absolute;
-            background: rgba(0, 255, 65, 0.0); /* שקוף לחלוטין */
-            border: 1px dashed rgba(0, 255, 65, 0.1);
-            cursor: crosshair;
-            transition: background 0.3s;
+            cursor: pointer;
+            border: 1px solid rgba(0, 255, 65, 0);
+            transition: 0.3s;
+        }
+        .hotspot:hover {
+            border: 1px solid var(--glow);
+            background: rgba(0, 255, 65, 0.05);
+            box-shadow: 0 0 15px var(--glow);
         }
 
-        .hotspot:hover { background: rgba(0, 255, 65, 0.1); }
-
-        /* סרגל הציוד */
-        #inventory-bar {
-            position: fixed; bottom: 0; width: 100%; height: 100px;
-            background: rgba(10, 10, 10, 0.9);
-            border-top: 2px solid var(--terminal-green);
-            display: flex; justify-content: center; align-items: center;
-            gap: 20px; z-index: 1100;
+        /* UI עליון - סטטוס */
+        #top-ui {
+            position: fixed; top: 0; width: 100%;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+            padding: 20px; display: flex; justify-content: space-between;
+            z-index: 100; pointer-events: none;
         }
 
-        .inventory-slot {
-            width: 70px; height: 70px;
-            border: 1px solid #333;
-            display: flex; justify-content: center; align-items: center;
-            background: #151515;
+        .status-box { font-size: 24px; text-shadow: 0 0 10px var(--glow); }
+
+        /* קונסולת פקודות (Terminal) */
+        #console {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px; height: 400px;
+            background: rgba(0, 10, 0, 0.95);
+            border: 2px solid var(--glow);
+            padding: 20px; z-index: 2000;
+            display: none; box-shadow: 0 0 50px #000;
         }
 
-        .item {
-            width: 50px; height: 50px; cursor: grab;
-            transition: transform 0.2s;
+        #console-output {
+            height: 330px; overflow-y: auto;
+            margin-bottom: 10px; font-size: 18px;
+            white-space: pre-wrap;
         }
 
-        .item:active { cursor: grabbing; }
+        #console-input {
+            width: 100%; background: transparent; border: none;
+            color: var(--glow); font-family: var(--font);
+            font-size: 20px; outline: none; border-top: 1px solid var(--dim-glow);
+        }
 
-        /* הודעות מערכת */
-        #terminal-msg {
-            position: absolute; top: 20px; left: 50%;
+        /* אינבנטורי משודרג */
+        #inventory {
+            position: fixed; bottom: 20px; left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 10px 20px; border-radius: 5px;
-            border: 1px solid var(--terminal-green);
-            text-shadow: 0 0 5px var(--terminal-green);
-            z-index: 1200;
+            display: flex; gap: 15px; z-index: 1000;
         }
 
-        #player-count {
-            position: fixed; top: 10px; right: 20px;
-            font-size: 14px; color: #aaa;
+        .item-slot {
+            width: 80px; height: 80px;
+            background: rgba(0, 20, 0, 0.8);
+            border: 2px solid var(--dim-glow);
+            display: flex; justify-content: center; align-items: center;
+            transition: 0.3s;
         }
 
-        .hidden { display: none !important; }
+        .item-slot.active { border-color: var(--glow); box-shadow: 0 0 15px var(--glow); }
+
+        .inv-icon { width: 60%; filter: drop-shadow(0 0 5px var(--glow)); cursor: grab; }
+
+        /* אפקטים */
+        .glitch { animation: shake 0.1s infinite; }
+        @keyframes shake {
+            0% { transform: translate(1px, 1px); }
+            50% { transform: translate(-1px, -2px); }
+            100% { transform: translate(1px, 1px); }
+        }
+
+        .scanline {
+            width: 100%; height: 2px; background: rgba(0, 255, 65, 0.1);
+            position: absolute; z-index: 5000; pointer-events: none;
+            animation: scan 4s linear infinite;
+        }
+        @keyframes scan { from { top: 0; } to { top: 100%; } }
     </style>
 </head>
 <body>
 
-<div class="scanlines"></div>
-<div id="player-count">שחקנים מחוברים: <span id="count">1</span></div>
-<div id="terminal-msg">מערכת TEL-AD אותחלה. חפש רמזים במבואה.</div>
-
-<div id="game-viewport">
-    <img id="room-image" src="https://i.postimg.cc/7Y0z8FX7/image-(70).png" alt="Room">
-    <div id="hotspot-layer"></div>
+<div class="scanline"></div>
+<div id="top-ui">
+    <div class="status-box">SYSTEM: <span id="sys-status">STANDBY</span></div>
+    <div class="status-box">CONNECTED_USERS: <span id="user-count">--</span></div>
 </div>
 
-<div id="inventory-bar">
-    <div class="inventory-slot" id="slot-1" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
-    <div class="inventory-slot" id="slot-2" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
-    <div class="inventory-slot" id="slot-3" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
-    <div class="inventory-slot" id="slot-4" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
-    <div class="inventory-slot" id="slot-5" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+<div id="viewport">
+    <img id="bg-img" src="https://i.postimg.cc/7Y0z8FX7/image-(70).png">
+    <div id="interaction-layer"></div>
+</div>
+
+<div id="console">
+    <div id="console-output">TEL-AD OS v4.0.2...</div>
+    <input type="text" id="console-input" placeholder="Enter Command..." autofocus>
+</div>
+
+<div id="inventory">
+    <div class="item-slot" id="slot-0"></div>
+    <div class="item-slot" id="slot-1"></div>
+    <div class="item-slot" id="slot-2"></div>
 </div>
 
 <script>
-    // --- הגדרות Firebase ---
+    // --- FIREBASE CONFIG ---
     const firebaseConfig = {
         apiKey: "AIzaSyBmwZMuHZY_c652BWnqiP9tp1QfwutoZAE",
         authDomain: "tel-ad.firebaseapp.com",
@@ -127,153 +159,149 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // --- מצב המשחק ---
-    let currentRoom = 1;
-    let inventory = [];
-    const rooms = {
+    // --- GAME STATE ---
+    let state = {
+        currentRoom: 1,
+        inventory: [],
+        powerRestored: false,
+        keycardValidated: false,
+        usersOnline: 0
+    };
+
+    const roomData = {
         1: {
-            img: "https://i.postimg.cc/7Y0z8FX7/image-(70).png",
-            hotspots: [
-                { x: 10, y: 60, w: 15, h: 25, type: 'text', content: "פיר מעלית חסום. ניירות מפוזרים בכל מקום." },
-                { x: 78, y: 75, w: 17, h: 20, type: 'item', item: 'battery', msg: "מצאת סוללה ישנה בתוך הפח!" },
-                { x: 53, y: 70, w: 14, h: 15, type: 'next', to: 2, msg: "נכנסת למעבדה..." }
+            url: "https://i.postimg.cc/7Y0z8FX7/image-(70).png",
+            spots: [
+                { x: 78, y: 82, w: 10, h: 10, action: "take", item: "BATTERY", msg: "סוללה גרעינית אותרה." },
+                { x: 50, y: 40, w: 15, h: 30, action: "move", to: 2, msg: "כניסה למעבדה המרכזית..." }
             ]
         },
         2: {
-            img: "https://i.postimg.cc/k54D4zNc/image-(71).png",
-            hotspots: [
-                { x: 65, y: 75, w: 13, h: 17, type: 'item', item: 'fuse', msg: "מצאת פיוז תעשייתי בפתח השירות!" },
-                { x: 82, y: 35, w: 13, h: 25, type: 'text', content: "המסך מהבהב: 'שגיאת מתח בחדר הליבה'." },
-                { x: 5, y: 60, w: 20, h: 30, type: 'next', to: 3, msg: "עובר לארכיון..." }
+            url: "https://i.postimg.cc/k54D4zNc/image-(71).png",
+            spots: [
+                { x: 65, y: 78, w: 10, h: 10, action: "take", item: "FUSE", msg: "מכלול פיוזים תקין נמצא." },
+                { x: 5, y: 50, w: 15, h: 30, action: "move", to: 3, msg: "כניסה לארכיון הסודי..." }
             ]
         },
         3: {
-            img: "https://i.postimg.cc/Fs4Rc7gd/image-(72).png",
-            hotspots: [
-                { x: 78, y: 60, w: 10, h: 15, type: 'item', item: 'keycard', msg: "כרטיס עובד נמצא מתחת לשולחן." },
-                { x: 12, y: 35, w: 10, h: 15, type: 'text', content: "יומן עבודה: 'הקוד הסופי פוצל בין 5 שרתים'." },
-                { x: 42, y: 30, w: 16, h: 25, type: 'next', to: 4, msg: "מתקרב לליבת המחשב..." }
+            url: "https://i.postimg.cc/Fs4Rc7gd/image-(72).png",
+            spots: [
+                { x: 80, y: 65, w: 8, h: 10, action: "take", item: "KEYCARD", msg: "כרטיס גישה סיווג אדום נמצא." },
+                { x: 45, y: 30, w: 15, h: 30, action: "move", to: 4, msg: "כניסה לחדר הליבה..." }
             ]
         },
         4: {
-            img: "https://i.postimg.cc/pdpXx8x4/image-(73).png",
-            hotspots: [
-                { x: 5, y: 35, w: 17, h: 40, type: 'dropzone', accept: ['battery', 'fuse'], id: 'power' },
-                { x: 42, y: 68, w: 16, h: 17, type: 'terminal', msg: "הטרמינל דורש אימות רב-משתמשים." }
+            url: "https://i.postimg.cc/pdpXx8x4/image-(73).png",
+            spots: [
+                { x: 8, y: 40, w: 12, h: 30, action: "use_power", msg: "נדרשת סוללה ופיוז להפעלת הליבה." },
+                { x: 45, y: 70, w: 10, h: 10, action: "open_terminal", msg: "מפעיל מסוף נתונים..." }
             ]
         }
     };
 
-    // --- לוגיקה פונקציונלית ---
+    // --- CORE FUNCTIONS ---
 
-    function initRoom(roomIdx) {
-        currentRoom = roomIdx;
-        const room = rooms[roomIdx];
-        document.getElementById('room-image').src = room.img;
-        const layer = document.getElementById('hotspot-layer');
+    function loadRoom(id) {
+        state.currentRoom = id;
+        const room = roomData[id];
+        const img = document.getElementById('bg-img');
+        img.src = room.url;
+
+        const layer = document.getElementById('interaction-layer');
         layer.innerHTML = '';
 
-        room.hotspots.forEach(hs => {
-            const div = document.createElement('div');
-            div.className = 'hotspot';
-            div.style.left = hs.x + '%';
-            div.style.top = hs.y + '%';
-            div.style.width = hs.w + '%';
-            div.style.height = hs.h + '%';
-
-            div.onclick = () => handleHotspot(hs);
-            
-            if (hs.type === 'dropzone') {
-                div.ondrop = (e) => handleDropOnZone(e, hs);
-                div.ondragover = allowDrop;
-                div.id = hs.id;
-            }
-
-            layer.appendChild(div);
+        room.spots.forEach(s => {
+            const el = document.createElement('div');
+            el.className = 'hotspot';
+            el.style.cssText = `left:${s.x}%; top:${s.y}%; width:${s.w}%; height:${s.h}%;`;
+            el.onclick = () => handleAction(s);
+            layer.appendChild(el);
         });
     }
 
-    function handleHotspot(hs) {
-        if (hs.type === 'text') updateTerminal(hs.content);
-        if (hs.type === 'item') {
-            addItem(hs.item);
-            updateTerminal(hs.msg);
-            hs.type = 'empty'; // מניעת איסוף כפול
-        }
-        if (hs.type === 'next') {
-            updateTerminal(hs.msg);
-            setTimeout(() => initRoom(hs.to), 1000);
-        }
-        if (hs.type === 'terminal') {
-            checkMultiplayerSuccess();
-        }
-    }
-
-    function updateTerminal(msg) {
-        const el = document.getElementById('terminal-msg');
-        el.innerText = msg;
-        el.style.color = 'var(--terminal-green)';
-    }
-
-    // --- מערכת Inventory ---
-
-    function addItem(itemName) {
-        if (inventory.includes(itemName)) return;
-        inventory.push(itemName);
-        const slots = document.querySelectorAll('.inventory-slot');
-        for (let slot of slots) {
-            if (!slot.hasChildNodes()) {
-                const img = document.createElement('img');
-                img.src = `https://img.icons8.com/wired/64/00ff41/${itemName}.png`; // איקונים דינמיים
-                img.className = 'item';
-                img.id = itemName;
-                img.draggable = true;
-                img.ondragstart = drag;
-                slot.appendChild(img);
-                break;
+    function handleAction(s) {
+        if (s.action === "take") {
+            if (!state.inventory.includes(s.item)) {
+                state.inventory.push(s.item);
+                updateInventoryUI();
+                logToTerminal(s.msg);
             }
+        } else if (s.action === "move") {
+            logToTerminal(s.msg);
+            setTimeout(() => loadRoom(s.to), 1000);
+        } else if (s.action === "use_power") {
+            if (state.inventory.includes("BATTERY") && state.inventory.includes("FUSE")) {
+                state.powerRestored = true;
+                logToTerminal("חשמל הוחזר למערכת הליבה!");
+                document.getElementById('sys-status').innerText = "ONLINE";
+            } else {
+                logToTerminal("חומרים חסרים: BATTERY, FUSE.");
+            }
+        } else if (s.action === "open_terminal") {
+            if (!state.powerRestored) return logToTerminal("אין מתח למסוף.");
+            document.getElementById('console').style.display = 'block';
+            document.getElementById('console-input').focus();
         }
     }
 
-    function drag(ev) { ev.dataTransfer.setData("text", ev.target.id); }
-    function allowDrop(ev) { ev.preventDefault(); }
-    function drop(ev) { ev.preventDefault(); }
-
-    function handleDropOnZone(ev, hs) {
-        ev.preventDefault();
-        const data = ev.dataTransfer.getData("text");
-        if (hs.accept.includes(data)) {
-            updateTerminal("רכיב הותקן בהצלחה.");
-            document.getElementById(data).remove();
-            // כאן אפשר להוסיף לוגיקה לשינוי מצב החשמל ב-Firebase
-        }
+    function updateInventoryUI() {
+        state.inventory.forEach((item, i) => {
+            const slot = document.getElementById(`slot-${i}`);
+            slot.innerHTML = `<img src="https://img.icons8.com/wired/64/00ff41/${item.toLowerCase()}.png" class="inv-icon">`;
+            slot.classList.add('active');
+        });
     }
 
-    // --- Multiplayer (Firebase) ---
+    // --- TERMINAL LOGIC ---
 
-    const playersRef = db.ref('online_players');
-    const myPlayerRef = playersRef.push(true);
-    myPlayerRef.onDisconnect().remove();
+    const consoleInput = document.getElementById('console-input');
+    const consoleOutput = document.getElementById('console-output');
 
-    playersRef.on('value', (snapshot) => {
-        const count = snapshot.numChildren();
-        document.getElementById('count').innerText = count;
+    consoleInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const cmd = consoleInput.value.toUpperCase();
+            processCommand(cmd);
+            consoleInput.value = '';
+        }
     });
 
-    function checkMultiplayerSuccess() {
-        playersRef.once('value', (snapshot) => {
-            if (snapshot.numChildren() >= 5) {
-                updateTerminal("אימות רב-משתמשים הצליח! קוד ליבה: 9851254");
-                document.body.style.boxShadow = "inset 0 0 100px var(--terminal-green)";
-            } else {
-                updateTerminal("שגיאה: נדרשים לפחות 5 משתמשים בו-זמנית.");
-            }
-        });
+    function logToTerminal(txt) {
+        consoleOutput.innerHTML += `\n> ${txt}`;
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
     }
 
-    // התחלה
-    initRoom(1);
+    function processCommand(cmd) {
+        logToTerminal(cmd);
+        if (cmd === "HELP") {
+            logToTerminal("COMMANDS: STATUS, UNLOCK, SYNC, EXIT");
+        } else if (cmd === "STATUS") {
+            logToTerminal(`POWER: ${state.powerRestored}\nUSERS_SYNC: ${state.usersOnline}/5`);
+        } else if (cmd === "SYNC") {
+            if (state.usersOnline >= 5) {
+                logToTerminal("סינכרון רב-משתמשים הצליח...");
+                setTimeout(() => logToTerminal("CODE_DECRYPTED: 9851254"), 2000);
+            } else {
+                logToTerminal(`ERROR: נדרשים 5 משתמשים. חסרים ${5-state.usersOnline}.`);
+            }
+        } else if (cmd === "EXIT") {
+            document.getElementById('console').style.display = 'none';
+        } else {
+            logToTerminal("COMMAND NOT FOUND.");
+        }
+    }
 
+    // --- FIREBASE SYNC ---
+    const presenceRef = db.ref('online_users');
+    const myRef = presenceRef.push(true);
+    myRef.onDisconnect().remove();
+
+    presenceRef.on('value', (snap) => {
+        state.usersOnline = snap.numChildren();
+        document.getElementById('user-count').innerText = state.usersOnline;
+    });
+
+    // START GAME
+    loadRoom(1);
 </script>
 </body>
 </html>
