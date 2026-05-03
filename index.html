@@ -2,156 +2,77 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>TEL-AD | PROJECT_GENESIS</title>
+    <title>TEL-AD | THE_SYSTEM</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; color: #00ff41; font-family: 'Courier New', monospace; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        .screen { display: none; flex-direction: column; align-items: center; width: 100%; height: 100%; }
+        .active { display: flex; }
 
-        :root {
-            --glow: #00ff41;
-            --dim-glow: #003b00;
-            --error: #ff003c;
-            --font: 'VT323', monospace;
-        }
+        /* מסך 1: כפתור לחיצה ארוכה */
+        #long-press-btn { width: 200px; height: 200px; border-radius: 50%; border: 5px solid #00ff41; background: none; color: #00ff41; font-size: 24px; cursor: pointer; transition: 0.2s; }
+        #long-press-btn:active { background: rgba(0, 255, 65, 0.3); transform: scale(0.95); }
+        #counter-display { font-size: 48px; margin-bottom: 20px; }
 
-        body, html {
-            margin: 0; padding: 0; height: 100%; width: 100%;
-            background: #000; color: var(--glow);
-            font-family: var(--font); overflow: hidden;
-        }
+        /* מסך 2: תפריט 3 כפתורים */
+        .menu-btn { width: 300px; padding: 20px; margin: 10px; border: 2px solid #00ff41; background: none; color: #00ff41; font-size: 24px; cursor: pointer; font-family: inherit; }
+        .menu-btn:disabled { border-color: #333; color: #333; cursor: not-allowed; }
 
-        /* מנגנון הצגת החדר - מבטיח שכל כפתור יישאר במקום */
-        #viewport {
-            position: relative;
-            width: 100vw; height: 100vh;
-            display: flex; justify-content: center; align-items: center;
-            overflow: hidden;
-        }
+        /* עץ החיים */
+        #tree-container { position: relative; width: 300px; height: 500px; margin-top: 20px; }
+        .sephira { position: absolute; width: 60px; height: 60px; border-radius: 50%; border: 2px solid #555; background: #222; display: flex; justify-content: center; align-items: center; font-size: 10px; cursor: pointer; user-select: none; }
+        .sephira.active { border-color: #00ff41; background: #004400; color: #fff; }
 
-        #bg-img {
-            width: 100%; height: 100%;
-            object-fit: cover; /* מותח את התמונה על כל המסך */
-            filter: brightness(0.6) contrast(1.2);
-            transition: filter 0.5s;
-        }
-
-        /* שכבת ה-Hotspots */
-        #interaction-layer {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-        }
-
-        .hotspot {
-            position: absolute;
-            cursor: pointer;
-            border: 1px solid rgba(0, 255, 65, 0);
-            transition: 0.3s;
-        }
-        .hotspot:hover {
-            border: 1px solid var(--glow);
-            background: rgba(0, 255, 65, 0.05);
-            box-shadow: 0 0 15px var(--glow);
-        }
-
-        /* UI עליון - סטטוס */
-        #top-ui {
-            position: fixed; top: 0; width: 100%;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
-            padding: 20px; display: flex; justify-content: space-between;
-            z-index: 100; pointer-events: none;
-        }
-
-        .status-box { font-size: 24px; text-shadow: 0 0 10px var(--glow); }
-
-        /* קונסולת פקודות (Terminal) */
-        #console {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 600px; height: 400px;
-            background: rgba(0, 10, 0, 0.95);
-            border: 2px solid var(--glow);
-            padding: 20px; z-index: 2000;
-            display: none; box-shadow: 0 0 50px #000;
-        }
-
-        #console-output {
-            height: 330px; overflow-y: auto;
-            margin-bottom: 10px; font-size: 18px;
-            white-space: pre-wrap;
-        }
-
-        #console-input {
-            width: 100%; background: transparent; border: none;
-            color: var(--glow); font-family: var(--font);
-            font-size: 20px; outline: none; border-top: 1px solid var(--dim-glow);
-        }
-
-        /* אינבנטורי משודרג */
-        #inventory {
-            position: fixed; bottom: 20px; left: 50%;
-            transform: translateX(-50%);
-            display: flex; gap: 15px; z-index: 1000;
-        }
-
-        .item-slot {
-            width: 80px; height: 80px;
-            background: rgba(0, 20, 0, 0.8);
-            border: 2px solid var(--dim-glow);
-            display: flex; justify-content: center; align-items: center;
-            transition: 0.3s;
-        }
-
-        .item-slot.active { border-color: var(--glow); box-shadow: 0 0 15px var(--glow); }
-
-        .inv-icon { width: 60%; filter: drop-shadow(0 0 5px var(--glow)); cursor: grab; }
-
-        /* אפקטים */
-        .glitch { animation: shake 0.1s infinite; }
-        @keyframes shake {
-            0% { transform: translate(1px, 1px); }
-            50% { transform: translate(-1px, -2px); }
-            100% { transform: translate(1px, 1px); }
-        }
-
-        .scanline {
-            width: 100%; height: 2px; background: rgba(0, 255, 65, 0.1);
-            position: absolute; z-index: 5000; pointer-events: none;
-            animation: scan 4s linear infinite;
-        }
-        @keyframes scan { from { top: 0; } to { top: 100%; } }
+        /* Flappy Bird */
+        #flappy-canvas { border: 2px solid #00ff41; background: #050505; }
+        
+        #final-input { background: none; border: 1px solid #00ff41; color: #00ff41; padding: 10px; font-size: 20px; text-align: center; }
     </style>
 </head>
 <body>
 
-<div class="scanline"></div>
-<div id="top-ui">
-    <div class="status-box">SYSTEM: <span id="sys-status">STANDBY</span></div>
-    <div class="status-box">CONNECTED_USERS: <span id="user-count">--</span></div>
+<!-- מסך 1: הכפתור המשותף -->
+<div id="screen-1" class="screen active">
+    <div id="counter-display">0 / 7</div>
+    <button id="long-press-btn">לחיצה ארוכה</button>
 </div>
 
-<div id="viewport">
-    <img id="bg-img" src="https://i.postimg.cc/7Y0z8FX7/image-(70).png">
-    <div id="interaction-layer"></div>
+<!-- מסך 2: התפריט הראשי -->
+<div id="screen-2" class="screen">
+    <button class="menu-btn" onclick="openSub(1)">כפתור 1: עץ החיים</button>
+    <button class="menu-btn" id="btn-2" onclick="openSub(2)" disabled>כפתור 2: פלאפי</button>
+    <button class="menu-btn" id="btn-3" onclick="openSub(3)" disabled>כפתור 3: נעילה</button>
 </div>
 
-<div id="console">
-    <div id="console-output">TEL-AD OS v4.0.2...</div>
-    <input type="text" id="console-input" placeholder="Enter Command..." autofocus>
+<!-- תת-מסך 1: עץ החיים -->
+<div id="sub-1" class="screen">
+    <h3>הפעל: חכמה, גבורה, נצח</h3>
+    <div id="tree-container"></div>
+    <button class="menu-btn" style="width:150px" onclick="backToMenu()">חזרה</button>
 </div>
 
-<div id="inventory">
-    <div class="item-slot" id="slot-0"></div>
-    <div class="item-slot" id="slot-1"></div>
-    <div class="item-slot" id="slot-2"></div>
+<!-- תת-מסך 2: Flappy Bird -->
+<div id="sub-2" class="screen">
+    <canvas id="flappy-canvas" width="320" height="480"></canvas>
+    <div id="code-reveal" style="margin-top:20px; font-weight:bold;"></div>
+    <button class="menu-btn" style="width:150px" onclick="backToMenu()">חזרה</button>
+</div>
+
+<!-- תת-מסך 3: הקוד הסופי -->
+<div id="sub-3" class="screen">
+    <h2>הזן קוד אימות</h2>
+    <input type="text" id="final-input" placeholder="????">
+    <button class="menu-btn" style="width:150px; margin-top:20px;" onclick="checkFinalCode()">אימות</button>
 </div>
 
 <script>
-    // --- FIREBASE CONFIG ---
+    // --- אתחול Firebase ---
     const firebaseConfig = {
         apiKey: "AIzaSyBmwZMuHZY_c652BWnqiP9tp1QfwutoZAE",
         authDomain: "tel-ad.firebaseapp.com",
         projectId: "tel-ad",
+        databaseURL: "https://tel-ad-default-rtdb.firebaseio.com", // וודא שזה ה-URL שלך
         storageBucket: "tel-ad.firebasestorage.app",
         messagingSenderId: "182338846469",
         appId: "1:182338846469:web:5b84052752e9663555816c"
@@ -159,149 +80,104 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // --- GAME STATE ---
-    let state = {
-        currentRoom: 1,
-        inventory: [],
-        powerRestored: false,
-        keycardValidated: false,
-        usersOnline: 0
-    };
+    // --- לוגיקה מסך 1 (לחיצה ארוכה) ---
+    let pressTimer;
+    const pressBtn = document.getElementById('long-press-btn');
+    const globalCounterRef = db.ref('global_press_count');
 
-    const roomData = {
-        1: {
-            url: "https://i.postimg.cc/7Y0z8FX7/image-(70).png",
-            spots: [
-                { x: 78, y: 82, w: 10, h: 10, action: "take", item: "BATTERY", msg: "סוללה גרעינית אותרה." },
-                { x: 50, y: 40, w: 15, h: 30, action: "move", to: 2, msg: "כניסה למעבדה המרכזית..." }
-            ]
-        },
-        2: {
-            url: "https://i.postimg.cc/k54D4zNc/image-(71).png",
-            spots: [
-                { x: 65, y: 78, w: 10, h: 10, action: "take", item: "FUSE", msg: "מכלול פיוזים תקין נמצא." },
-                { x: 5, y: 50, w: 15, h: 30, action: "move", to: 3, msg: "כניסה לארכיון הסודי..." }
-            ]
-        },
-        3: {
-            url: "https://i.postimg.cc/Fs4Rc7gd/image-(72).png",
-            spots: [
-                { x: 80, y: 65, w: 8, h: 10, action: "take", item: "KEYCARD", msg: "כרטיס גישה סיווג אדום נמצא." },
-                { x: 45, y: 30, w: 15, h: 30, action: "move", to: 4, msg: "כניסה לחדר הליבה..." }
-            ]
-        },
-        4: {
-            url: "https://i.postimg.cc/pdpXx8x4/image-(73).png",
-            spots: [
-                { x: 8, y: 40, w: 12, h: 30, action: "use_power", msg: "נדרשת סוללה ופיוז להפעלת הליבה." },
-                { x: 45, y: 70, w: 10, h: 10, action: "open_terminal", msg: "מפעיל מסוף נתונים..." }
-            ]
-        }
-    };
+    pressBtn.addEventListener('mousedown', () => {
+        pressTimer = setTimeout(() => {
+            globalCounterRef.transaction(current => (current || 0) + 1);
+        }, 1500); // 1.5 שניות לחיצה
+    });
+    pressBtn.addEventListener('mouseup', () => clearTimeout(pressTimer));
 
-    // --- CORE FUNCTIONS ---
-
-    function loadRoom(id) {
-        state.currentRoom = id;
-        const room = roomData[id];
-        const img = document.getElementById('bg-img');
-        img.src = room.url;
-
-        const layer = document.getElementById('interaction-layer');
-        layer.innerHTML = '';
-
-        room.spots.forEach(s => {
-            const el = document.createElement('div');
-            el.className = 'hotspot';
-            el.style.cssText = `left:${s.x}%; top:${s.y}%; width:${s.w}%; height:${s.h}%;`;
-            el.onclick = () => handleAction(s);
-            layer.appendChild(el);
-        });
-    }
-
-    function handleAction(s) {
-        if (s.action === "take") {
-            if (!state.inventory.includes(s.item)) {
-                state.inventory.push(s.item);
-                updateInventoryUI();
-                logToTerminal(s.msg);
-            }
-        } else if (s.action === "move") {
-            logToTerminal(s.msg);
-            setTimeout(() => loadRoom(s.to), 1000);
-        } else if (s.action === "use_power") {
-            if (state.inventory.includes("BATTERY") && state.inventory.includes("FUSE")) {
-                state.powerRestored = true;
-                logToTerminal("חשמל הוחזר למערכת הליבה!");
-                document.getElementById('sys-status').innerText = "ONLINE";
-            } else {
-                logToTerminal("חומרים חסרים: BATTERY, FUSE.");
-            }
-        } else if (s.action === "open_terminal") {
-            if (!state.powerRestored) return logToTerminal("אין מתח למסוף.");
-            document.getElementById('console').style.display = 'block';
-            document.getElementById('console-input').focus();
-        }
-    }
-
-    function updateInventoryUI() {
-        state.inventory.forEach((item, i) => {
-            const slot = document.getElementById(`slot-${i}`);
-            slot.innerHTML = `<img src="https://img.icons8.com/wired/64/00ff41/${item.toLowerCase()}.png" class="inv-icon">`;
-            slot.classList.add('active');
-        });
-    }
-
-    // --- TERMINAL LOGIC ---
-
-    const consoleInput = document.getElementById('console-input');
-    const consoleOutput = document.getElementById('console-output');
-
-    consoleInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            const cmd = consoleInput.value.toUpperCase();
-            processCommand(cmd);
-            consoleInput.value = '';
+    globalCounterRef.on('value', snap => {
+        const val = snap.val() || 0;
+        document.getElementById('counter-display').innerText = `${val} / 7`;
+        if (val >= 7) {
+            showScreen('screen-2');
         }
     });
 
-    function logToTerminal(txt) {
-        consoleOutput.innerHTML += `\n> ${txt}`;
-        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    // --- ניהול מסכים ---
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
     }
 
-    function processCommand(cmd) {
-        logToTerminal(cmd);
-        if (cmd === "HELP") {
-            logToTerminal("COMMANDS: STATUS, UNLOCK, SYNC, EXIT");
-        } else if (cmd === "STATUS") {
-            logToTerminal(`POWER: ${state.powerRestored}\nUSERS_SYNC: ${state.usersOnline}/5`);
-        } else if (cmd === "SYNC") {
-            if (state.usersOnline >= 5) {
-                logToTerminal("סינכרון רב-משתמשים הצליח...");
-                setTimeout(() => logToTerminal("CODE_DECRYPTED: 9851254"), 2000);
-            } else {
-                logToTerminal(`ERROR: נדרשים 5 משתמשים. חסרים ${5-state.usersOnline}.`);
+    function openSub(num) { showScreen(`sub-${num}`); if(num === 2) initFlappy(); }
+    function backToMenu() { showScreen('screen-2'); }
+
+    // --- לוגיקה עץ החיים ---
+    const sephirot = [
+        {n: 'כתר', x:120, y:0}, {n: 'חכמה', x:220, y:60}, {n: 'בינה', x:20, y:60},
+        {n: 'חסד', x:220, y:160}, {n: 'גבורה', x:20, y:160}, {n: 'תפארת', x:120, y:220},
+        {n: 'נצח', x:220, y:320}, {n: 'הוד', x:20, y:320}, {n: 'יסוד', x:120, y:380}, {n: 'מלכות', x:120, y:480}
+    ];
+    let activeSephirot = [];
+
+    const treeContainer = document.getElementById('tree-container');
+    sephirot.forEach(s => {
+        const d = document.createElement('div');
+        d.className = 'sephira';
+        d.innerText = s.n;
+        d.style.left = s.x + 'px'; d.style.top = s.y + 'px';
+        d.onclick = () => {
+            d.classList.toggle('active');
+            if(d.classList.contains('active')) activeSephirot.push(s.n);
+            else activeSephirot = activeSephirot.filter(item => item !== s.n);
+            
+            if(['חכמה', 'גבורה', 'נצח'].every(target => activeSephirot.includes(target))) {
+                document.getElementById('btn-2').disabled = false;
             }
-        } else if (cmd === "EXIT") {
-            document.getElementById('console').style.display = 'none';
+        };
+        treeContainer.appendChild(d);
+    });
+
+    // --- Flappy Bird ---
+    const canvas = document.getElementById('flappy-canvas');
+    const ctx = canvas.getContext('2d');
+    let birdY = 200, birdV = 0, score = 0, gameActive = false;
+
+    function initFlappy() {
+        gameActive = true; birdY = 200; birdV = 0; score = 0;
+        requestAnimationFrame(updateFlappy);
+    }
+
+    canvas.onclick = () => { birdV = -4.5; };
+
+    function updateFlappy() {
+        if(!gameActive) return;
+        ctx.clearRect(0, 0, 320, 480);
+        birdV += 0.2; birdY += birdV;
+        ctx.fillStyle = "#00ff41";
+        ctx.fillRect(50, birdY, 20, 20);
+        
+        score += 0.01;
+        let displayScore = Math.floor(score);
+        ctx.fillText("Score: " + displayScore, 10, 20);
+
+        if(displayScore >= 20) {
+            document.getElementById('code-reveal').innerText = "CODE: 9851";
+            document.getElementById('btn-3').disabled = false;
+        }
+
+        if(birdY > 480 || birdY < 0) { gameActive = false; setTimeout(initFlappy, 1000); }
+        else requestAnimationFrame(updateFlappy);
+    }
+
+    // --- בדיקה סופית ---
+    function checkFinalCode() {
+        if(document.getElementById('final-input').value === "9851") {
+            alert("מי אלה? איפה אני?");
+            window.close();
+            // במקרה שדפדפן חוסם window.close:
+            document.body.innerHTML = "<h1 style='text-align:center; margin-top:200px'>CONNECTION LOST...</h1>";
         } else {
-            logToTerminal("COMMAND NOT FOUND.");
+            alert("קוד שגוי");
         }
     }
-
-    // --- FIREBASE SYNC ---
-    const presenceRef = db.ref('online_users');
-    const myRef = presenceRef.push(true);
-    myRef.onDisconnect().remove();
-
-    presenceRef.on('value', (snap) => {
-        state.usersOnline = snap.numChildren();
-        document.getElementById('user-count').innerText = state.usersOnline;
-    });
-
-    // START GAME
-    loadRoom(1);
 </script>
 </body>
 </html>
