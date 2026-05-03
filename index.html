@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE_VAULT | TEL-AD System</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --terminal-green: #00ff41;
+            --alert-red: #ff003c;
+            --bg-dark: #0a0a0a;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--terminal-green);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        /* אפקט ה-CRT המפורסם */
+        .scanlines {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%;
+            z-index: 1000; pointer-events: none;
+        }
+
+        #game-viewport {
+            position: relative;
+            width: 100vw; height: calc(100vh - 100px);
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        #room-image {
+            max-width: 100%; max-height: 100%;
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);
+            user-select: none;
+        }
+
+        .hotspot {
+            position: absolute;
+            background: rgba(0, 255, 65, 0.0); /* שקוף לחלוטין */
+            border: 1px dashed rgba(0, 255, 65, 0.1);
+            cursor: crosshair;
+            transition: background 0.3s;
+        }
+
+        .hotspot:hover { background: rgba(0, 255, 65, 0.1); }
+
+        /* סרגל הציוד */
+        #inventory-bar {
+            position: fixed; bottom: 0; width: 100%; height: 100px;
+            background: rgba(10, 10, 10, 0.9);
+            border-top: 2px solid var(--terminal-green);
+            display: flex; justify-content: center; align-items: center;
+            gap: 20px; z-index: 1100;
+        }
+
+        .inventory-slot {
+            width: 70px; height: 70px;
+            border: 1px solid #333;
+            display: flex; justify-content: center; align-items: center;
+            background: #151515;
+        }
+
+        .item {
+            width: 50px; height: 50px; cursor: grab;
+            transition: transform 0.2s;
+        }
+
+        .item:active { cursor: grabbing; }
+
+        /* הודעות מערכת */
+        #terminal-msg {
+            position: absolute; top: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px; border-radius: 5px;
+            border: 1px solid var(--terminal-green);
+            text-shadow: 0 0 5px var(--terminal-green);
+            z-index: 1200;
+        }
+
+        #player-count {
+            position: fixed; top: 10px; right: 20px;
+            font-size: 14px; color: #aaa;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+<div id="player-count">שחקנים מחוברים: <span id="count">1</span></div>
+<div id="terminal-msg">מערכת TEL-AD אותחלה. חפש רמזים במבואה.</div>
+
+<div id="game-viewport">
+    <img id="room-image" src="https://i.postimg.cc/7Y0z8FX7/image-(70).png" alt="Room">
+    <div id="hotspot-layer"></div>
+</div>
+
+<div id="inventory-bar">
+    <div class="inventory-slot" id="slot-1" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    <div class="inventory-slot" id="slot-2" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    <div class="inventory-slot" id="slot-3" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    <div class="inventory-slot" id="slot-4" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    <div class="inventory-slot" id="slot-5" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+</div>
+
+<script>
+    // --- הגדרות Firebase ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyBmwZMuHZY_c652BWnqiP9tp1QfwutoZAE",
+        authDomain: "tel-ad.firebaseapp.com",
+        projectId: "tel-ad",
+        storageBucket: "tel-ad.firebasestorage.app",
+        messagingSenderId: "182338846469",
+        appId: "1:182338846469:web:5b84052752e9663555816c"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // --- מצב המשחק ---
+    let currentRoom = 1;
+    let inventory = [];
+    const rooms = {
+        1: {
+            img: "https://i.postimg.cc/7Y0z8FX7/image-(70).png",
+            hotspots: [
+                { x: 10, y: 60, w: 15, h: 25, type: 'text', content: "פיר מעלית חסום. ניירות מפוזרים בכל מקום." },
+                { x: 78, y: 75, w: 17, h: 20, type: 'item', item: 'battery', msg: "מצאת סוללה ישנה בתוך הפח!" },
+                { x: 53, y: 70, w: 14, h: 15, type: 'next', to: 2, msg: "נכנסת למעבדה..." }
+            ]
+        },
+        2: {
+            img: "https://i.postimg.cc/k54D4zNc/image-(71).png",
+            hotspots: [
+                { x: 65, y: 75, w: 13, h: 17, type: 'item', item: 'fuse', msg: "מצאת פיוז תעשייתי בפתח השירות!" },
+                { x: 82, y: 35, w: 13, h: 25, type: 'text', content: "המסך מהבהב: 'שגיאת מתח בחדר הליבה'." },
+                { x: 5, y: 60, w: 20, h: 30, type: 'next', to: 3, msg: "עובר לארכיון..." }
+            ]
+        },
+        3: {
+            img: "https://i.postimg.cc/Fs4Rc7gd/image-(72).png",
+            hotspots: [
+                { x: 78, y: 60, w: 10, h: 15, type: 'item', item: 'keycard', msg: "כרטיס עובד נמצא מתחת לשולחן." },
+                { x: 12, y: 35, w: 10, h: 15, type: 'text', content: "יומן עבודה: 'הקוד הסופי פוצל בין 5 שרתים'." },
+                { x: 42, y: 30, w: 16, h: 25, type: 'next', to: 4, msg: "מתקרב לליבת המחשב..." }
+            ]
+        },
+        4: {
+            img: "https://i.postimg.cc/pdpXx8x4/image-(73).png",
+            hotspots: [
+                { x: 5, y: 35, w: 17, h: 40, type: 'dropzone', accept: ['battery', 'fuse'], id: 'power' },
+                { x: 42, y: 68, w: 16, h: 17, type: 'terminal', msg: "הטרמינל דורש אימות רב-משתמשים." }
+            ]
+        }
+    };
+
+    // --- לוגיקה פונקציונלית ---
+
+    function initRoom(roomIdx) {
+        currentRoom = roomIdx;
+        const room = rooms[roomIdx];
+        document.getElementById('room-image').src = room.img;
+        const layer = document.getElementById('hotspot-layer');
+        layer.innerHTML = '';
+
+        room.hotspots.forEach(hs => {
+            const div = document.createElement('div');
+            div.className = 'hotspot';
+            div.style.left = hs.x + '%';
+            div.style.top = hs.y + '%';
+            div.style.width = hs.w + '%';
+            div.style.height = hs.h + '%';
+
+            div.onclick = () => handleHotspot(hs);
+            
+            if (hs.type === 'dropzone') {
+                div.ondrop = (e) => handleDropOnZone(e, hs);
+                div.ondragover = allowDrop;
+                div.id = hs.id;
+            }
+
+            layer.appendChild(div);
+        });
+    }
+
+    function handleHotspot(hs) {
+        if (hs.type === 'text') updateTerminal(hs.content);
+        if (hs.type === 'item') {
+            addItem(hs.item);
+            updateTerminal(hs.msg);
+            hs.type = 'empty'; // מניעת איסוף כפול
+        }
+        if (hs.type === 'next') {
+            updateTerminal(hs.msg);
+            setTimeout(() => initRoom(hs.to), 1000);
+        }
+        if (hs.type === 'terminal') {
+            checkMultiplayerSuccess();
+        }
+    }
+
+    function updateTerminal(msg) {
+        const el = document.getElementById('terminal-msg');
+        el.innerText = msg;
+        el.style.color = 'var(--terminal-green)';
+    }
+
+    // --- מערכת Inventory ---
+
+    function addItem(itemName) {
+        if (inventory.includes(itemName)) return;
+        inventory.push(itemName);
+        const slots = document.querySelectorAll('.inventory-slot');
+        for (let slot of slots) {
+            if (!slot.hasChildNodes()) {
+                const img = document.createElement('img');
+                img.src = `https://img.icons8.com/wired/64/00ff41/${itemName}.png`; // איקונים דינמיים
+                img.className = 'item';
+                img.id = itemName;
+                img.draggable = true;
+                img.ondragstart = drag;
+                slot.appendChild(img);
+                break;
+            }
+        }
+    }
+
+    function drag(ev) { ev.dataTransfer.setData("text", ev.target.id); }
+    function allowDrop(ev) { ev.preventDefault(); }
+    function drop(ev) { ev.preventDefault(); }
+
+    function handleDropOnZone(ev, hs) {
+        ev.preventDefault();
+        const data = ev.dataTransfer.getData("text");
+        if (hs.accept.includes(data)) {
+            updateTerminal("רכיב הותקן בהצלחה.");
+            document.getElementById(data).remove();
+            // כאן אפשר להוסיף לוגיקה לשינוי מצב החשמל ב-Firebase
+        }
+    }
+
+    // --- Multiplayer (Firebase) ---
+
+    const playersRef = db.ref('online_players');
+    const myPlayerRef = playersRef.push(true);
+    myPlayerRef.onDisconnect().remove();
+
+    playersRef.on('value', (snapshot) => {
+        const count = snapshot.numChildren();
+        document.getElementById('count').innerText = count;
+    });
+
+    function checkMultiplayerSuccess() {
+        playersRef.once('value', (snapshot) => {
+            if (snapshot.numChildren() >= 5) {
+                updateTerminal("אימות רב-משתמשים הצליח! קוד ליבה: 9851254");
+                document.body.style.boxShadow = "inset 0 0 100px var(--terminal-green)";
+            } else {
+                updateTerminal("שגיאה: נדרשים לפחות 5 משתמשים בו-זמנית.");
+            }
+        });
+    }
+
+    // התחלה
+    initRoom(1);
+
+</script>
+</body>
+</html>
